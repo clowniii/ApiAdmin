@@ -124,24 +124,28 @@ class UserController extends BaseController
             return $this->buildFailed(ReturnCode::PARAM_INVALID, '非法操作');
         }
 
-        $totalNum = (new AdminAuthGroupAccess())->where('find_in_set("' . $gid . '", `group_id`)')->count();
+        $totalNum = (new AdminAuthGroupAccess())->whereRaw('find_in_set(?, `group_id`)', [$gid])->count();
         $start = $limit * ($page - 1);
-        $sql = "SELECT au.* FROM admin_user as au LEFT JOIN admin_auth_group_access as aaga " .
-            " ON aaga.`uid` = au.`id` WHERE find_in_set('{$gid}', aaga.`group_id`) " .
-            " ORDER BY au.create_time DESC LIMIT {$start}, {$limit}";
-        $userInfo = Db::query($sql);
+        $userInfo = DB::table('admin_user as au')
+        ->leftJoin('admin_auth_group_access as aaga', 'aaga.uid', '=', 'au.id')
+        ->whereRaw('find_in_set(?, aaga.group_id)', [$gid])
+        ->orderBy('au.create_time', 'desc')
+        ->offset($start)
+        ->limit($limit)
+        ->get()
+        ->toArray();
 
-        $uidArr = array_column((array)$userInfo, 'id');
+        $uidArr = array_column($userInfo, 'id');
         $userData = (new AdminUserData())->whereIn('uid', $uidArr)->get()->toArray();
         $userData = Tools::buildArrByNewKey($userData, 'uid');
 
         foreach ($userInfo as $key => $value) {
-            if (isset($userData[$value['id']])) {
-                $userInfo[$key]['last_login_ip'] = long2ip($userData[$value['id']]['last_login_ip']);
-                $userInfo[$key]['login_times'] = $userData[$value['id']]['login_times'];
-                $userInfo[$key]['last_login_time'] = date('Y-m-d H:i:s', $userData[$value['id']]['last_login_time']);
+            if (isset($userData[$value->id])) {
+                $userInfo[$key]->last_login_ip = long2ip($userData[$value->id]['last_login_ip']);
+                $userInfo[$key]->login_times = $userData[$value->id]['login_times'];
+                $userInfo[$key]->last_login_time = date('Y-m-d H:i:s', $userData[$value->id]['last_login_time']);
             }
-            $userInfo[$key]['create_ip'] = long2ip($userInfo[$key]['create_ip']);
+            $userInfo[$key]->create_ip = long2ip($userInfo[$key]->create_ip);
         }
 
         return $this->buildSuccess([
